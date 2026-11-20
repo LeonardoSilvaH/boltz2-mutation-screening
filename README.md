@@ -137,6 +137,40 @@ substitutions of their wild type and should be re-modelled before being trusted:
 The pipeline does not silently mis-handle them: each falls back to its own MSA search
 instead of sharing the wild-type alignment.
 
+## Running on a remote GPU server
+
+The repository is public, so no credentials are needed to clone it:
+
+```bash
+git clone https://github.com/LeonardoSilvaH/boltz2-mutation-screening.git
+cd boltz2-mutation-screening
+```
+
+That pulls ~200 MB. If you only ever need the current state, `git clone --depth 1`
+halves the transfer. To update later, `git pull`; results stay out of the way because
+`boltz2_work/` and `boltz2_out/` are gitignored.
+
+Then set up the environment and confirm the GPU is visible:
+
+```bash
+conda create -n boltz2 python=3.11 -y && conda activate boltz2
+pip install boltz rdkit pyyaml
+python -c "import torch; print(torch.cuda.get_device_name(0))"
+```
+
+Boltz downloads its model weights (several GB) into `~/.boltz` on first use. Set
+`BOLTZ_CACHE` if the home directory is small or not shared between nodes.
+
+Steps 1–3 need no GPU and can run on the login node; step 4 is the GPU job. Because
+`run_boltz.sh` stages only unfinished jobs, it is safe to run it under a scheduler
+with a wall-clock limit and simply resubmit until everything is done.
+
+## License
+
+MIT — see [LICENSE](LICENSE). This covers the code and the derived data in this
+repository; the upstream tools it calls carry their own licenses, and Boltz-2's
+weights in particular have terms of their own.
+
 ## Credits
 
 Protein structures predicted with [AlphaFold2](https://github.com/google-deepmind/alphafold)
