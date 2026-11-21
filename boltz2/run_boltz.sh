@@ -37,6 +37,17 @@ if [ ! -d "$JOBS_DIR" ]; then
   exit 1
 fi
 
+# Preflight: a broken install (a torch/torchvision mismatch, say) fails on import
+# and would otherwise repeat the same traceback once per gene. Catch it up front.
+if ! preflight="$(boltz --help 2>&1)"; then
+  echo "ERROR: 'boltz --help' failed, so no gene can run. The install is broken:" >&2
+  echo "$preflight" | tail -15 >&2
+  exit 1
+fi
+
+MAX_CONSECUTIVE_FAILURES=3
+consecutive_failures=0
+
 for gene_dir in "$JOBS_DIR"/*/; do
   gene="$(basename "$gene_dir")"
   [ -n "$ONLY_GENE" ] && [ "$gene" != "$ONLY_GENE" ] && continue
@@ -77,10 +88,21 @@ for gene_dir in "$JOBS_DIR"/*/; do
     2>&1 | tee -a "$LOG_DIR/$gene.log"
 
   status=${PIPESTATUS[0]}
-  if [ "$status" -ne 0 ]; then
-    echo "[$gene] boltz exited $status -- see $LOG_DIR/$gene.log; continuing to next gene" >&2
-  fi
   rm -rf "$pending"
+
+  if [ "$status" -ne 0 ]; then
+    consecutive_failures=$((consecutive_failures + 1))
+    echo "[$gene] boltz exited $status -- see $LOG_DIR/$gene.log" >&2
+    if [ "$consecutive_failures" -ge "$MAX_CONSECUTIVE_FAILURES" ]; then
+      echo "Stopping: $consecutive_failures genes in a row failed, so this looks" >&2
+      echo "like an environment or hardware problem rather than bad input." >&2
+      echo "Fix it and re-run -- finished jobs are skipped automatically." >&2
+      exit 1
+    fi
+    echo "[$gene] continuing to next gene" >&2
+  else
+    consecutive_failures=0
+  fi
 done
 
 echo "All genes processed. Collect with: python boltz2/collect_results.py --work $WORK --out $OUT"

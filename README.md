@@ -165,6 +165,31 @@ Steps 1–3 need no GPU and can run on the login node; step 4 is the GPU job. Be
 `run_boltz.sh` stages only unfinished jobs, it is safe to run it under a scheduler
 with a wall-clock limit and simply resubmit until everything is done.
 
+## Troubleshooting
+
+**`RuntimeError: operator torchvision::nms does not exist`** — torchvision's compiled
+ops do not match the installed torch. Boltz never calls torchvision itself; it is
+dragged in through `pytorch_lightning` → `torchmetrics` → `arniqa`. Check the pair:
+
+```bash
+python -c "import torch, torchvision; print(torch.__version__, torchvision.__version__, torch.version.cuda)"
+```
+
+and reinstall both together from the same CUDA index, letting pip match the versions:
+
+```bash
+pip uninstall -y torch torchvision
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+```
+
+Use the `cu###` index matching the server's driver (`nvidia-smi`). `run_boltz.sh`
+runs `boltz --help` before the loop, so a broken install is reported once rather than
+once per gene.
+
+**Every gene fails in a row** — the runner stops after three consecutive failures on
+the assumption that the problem is the environment or the GPU rather than the input.
+Finished jobs are always skipped, so fix the cause and re-run the same command.
+
 ## License
 
 MIT — see [LICENSE](LICENSE). This covers the code and the derived data in this
