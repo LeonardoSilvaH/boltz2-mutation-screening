@@ -169,22 +169,36 @@ with a wall-clock limit and simply resubmit until everything is done.
 
 **`RuntimeError: operator torchvision::nms does not exist`** — torchvision's compiled
 ops do not match the installed torch. Boltz never calls torchvision itself; it is
-dragged in through `pytorch_lightning` → `torchmetrics` → `arniqa`. Check the pair:
+dragged in through `pytorch_lightning` → `torchmetrics` → `arniqa`, and torchmetrics
+guards that import with `if _TORCHVISION_AVAILABLE:`. So the quickest fix is simply
+to remove it:
 
 ```bash
-python -c "import torch, torchvision; print(torch.__version__, torchvision.__version__, torch.version.cuda)"
+pip uninstall -y torchvision
+boltz --help
 ```
 
-and reinstall both together from the same CUDA index, letting pip match the versions:
+This leaves `torch` untouched, which matters because other compiled dependencies
+(`cuequivariance`, `trifast`) are built against the installed torch and would need
+rebuilding if it moved.
+
+If something else in the environment genuinely needs torchvision, reinstall the
+version matching your torch instead — note that importing torchvision is what
+crashes, so read the versions from package metadata rather than by importing:
 
 ```bash
-pip uninstall -y torch torchvision
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+pip list | grep -Ei "^(torch|torchvision|torchmetrics|pytorch-lightning) "
 ```
 
-Use the `cu###` index matching the server's driver (`nvidia-smi`). `run_boltz.sh`
-runs `boltz --help` before the loop, so a broken install is reported once rather than
-once per gene.
+torch 2.x pairs with torchvision 0.(x+15): 2.5→0.20, 2.6→0.21, 2.7→0.22, 2.8→0.23.
+Install the match from the CUDA index matching the driver in `nvidia-smi`:
+
+```bash
+pip install --force-reinstall torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu121
+```
+
+`run_boltz.sh` runs `boltz --help` before the loop, so a broken install is reported
+once rather than once per gene.
 
 **Every gene fails in a row** — the runner stops after three consecutive failures on
 the assumption that the problem is the environment or the GPU rather than the input.
