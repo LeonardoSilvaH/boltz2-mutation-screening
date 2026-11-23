@@ -200,6 +200,27 @@ pip install --force-reinstall torchvision==0.21.0 --index-url https://download.p
 `run_boltz.sh` runs `boltz --help` before the loop, so a broken install is reported
 once rather than once per gene.
 
+**`PermissionError` when trying to fix the environment** — the conda environment
+belongs to another user (its path is under someone else's home), so it cannot be
+repaired in place, and repairing it would change it for everyone who shares it.
+Build your own environment somewhere you own instead:
+
+```bash
+python3 -m venv /hd/$USER/envs/boltz2        # no --system-site-packages
+source /hd/$USER/envs/boltz2/bin/activate
+pip install boltz rdkit
+```
+
+Do not pass `--system-site-packages`: inheriting the broken torchvision is exactly
+what this avoids. Point the model cache at the same disk if home is small or is not
+shared across compute nodes:
+
+```bash
+export BOLTZ_CACHE=/hd/$USER/.boltz
+```
+
+Add that line to the job script too, so compute nodes see it.
+
 **Every gene fails in a row** — the runner stops after three consecutive failures on
 the assumption that the problem is the environment or the GPU rather than the input.
 Finished jobs are always skipped, so fix the cause and re-run the same command.
