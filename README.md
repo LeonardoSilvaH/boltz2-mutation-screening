@@ -201,9 +201,32 @@ pip install --force-reinstall torchvision==0.21.0 --index-url https://download.p
 once rather than once per gene.
 
 **`PermissionError` when trying to fix the environment** — the conda environment
-belongs to another user (its path is under someone else's home), so it cannot be
-repaired in place, and repairing it would change it for everyone who shares it.
-Build your own environment somewhere you own instead:
+belongs to another user, so it cannot be repaired in place. Check who owns it and
+whether the group write bit is set:
+
+```bash
+ls -ld "$(python -c 'import site; print(site.getsitepackages()[0])')"; id
+```
+
+If it shows `drwxrwxr-x someone somegroup`, the *group* can write, so an admin
+adding you to that group (`sudo usermod -aG somegroup $USER`, then log out and back
+in) is a lighter fix than `chown` and makes the environment maintainable again.
+
+Until then, you can keep using that environment and override the one broken package
+without writing to it, since Python searches `PYTHONPATH` before site-packages:
+
+```bash
+bash tools/torchvision_stub.sh /hd/$USER/torchvision_stub
+export PYTHONPATH=/hd/$USER/torchvision_stub:$PYTHONPATH
+boltz --help
+```
+
+That installs a stand-in satisfying the only two torchvision imports in the chain.
+Use it when no released torchvision matches the installed torch — torchvision 0.29
+pins `torch==2.14.0`, so a newer torch has nothing to pair with yet. Add the
+`PYTHONPATH` export to any job script, or compute nodes will not see it.
+
+Alternatively, build your own environment somewhere you own:
 
 ```bash
 python3 -m venv /hd/$USER/envs/boltz2        # no --system-site-packages
