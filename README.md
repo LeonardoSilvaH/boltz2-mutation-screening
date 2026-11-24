@@ -221,10 +221,15 @@ export PYTHONPATH=/hd/$USER/torchvision_stub:$PYTHONPATH
 boltz --help
 ```
 
-That installs a stand-in satisfying the only two torchvision imports in the chain.
-Use it when no released torchvision matches the installed torch — torchvision 0.29
-pins `torch==2.14.0`, so a newer torch has nothing to pair with yet. Add the
-`PYTHONPATH` export to any job script, or compute nodes will not see it.
+That installs a stand-in which resolves any torchvision submodule and any attribute,
+because which names torchmetrics imports varies by version and some of them are not
+guarded. Attributes raise if anything ever calls them, so nothing fails silently.
+The script verifies itself by importing `torchmetrics`, `pytorch_lightning` and
+`boltz.main` before reporting success.
+
+Use this when no released torchvision matches the installed torch — torchvision 0.29
+pins `torch==2.14.0`, so torch 2.15 has nothing to pair with yet. Add the `PYTHONPATH`
+export to any job script, or compute nodes will not see it.
 
 Alternatively, build your own environment somewhere you own:
 
