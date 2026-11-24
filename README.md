@@ -150,7 +150,15 @@ That pulls ~200 MB. If you only ever need the current state, `git clone --depth 
 halves the transfer. To update later, `git pull`; results stay out of the way because
 `boltz2_work/` and `boltz2_out/` are gitignored.
 
-Then set up the environment and confirm the GPU is visible:
+Then set up the environment. The script picks the torch build matching the GPU
+driver, which is the step least worth doing by hand:
+
+```bash
+bash tools/setup_env.sh ~/envs/boltz2
+source ~/envs/boltz2/bin/activate
+```
+
+Or with conda, if you prefer:
 
 ```bash
 conda create -n boltz2 python=3.11 -y && conda activate boltz2
@@ -162,7 +170,7 @@ python -c "import torch; print(torch.cuda.get_device_name(0))"
 That last line is the one that matters: it fails if torch was built for a newer
 CUDA than the driver provides, which is easy to hit because the default PyPI
 wheel tracks the newest CUDA. Check the driver's version with `nvidia-smi` and
-pick the matching index.
+pick the matching index — `cu126` for any CUDA 12.x driver.
 
 Boltz downloads its model weights (several GB) into `~/.boltz` on first use. Set
 `BOLTZ_CACHE` if the home directory is small or not shared between nodes.
@@ -268,19 +276,38 @@ Use this when no released torchvision matches the installed torch — torchvisio
 pins `torch==2.14.0`, so torch 2.15 has nothing to pair with yet. Add the `PYTHONPATH`
 export to any job script, or compute nodes will not see it.
 
-Alternatively, build your own environment somewhere you own:
+Alternatively, build your own environment somewhere you own. `setup_env.sh` does
+this and checks each step:
+
+```bash
+bash tools/setup_env.sh /hd/$USER/envs/boltz2
+```
+
+It picks a Python 3.10–3.12 with a working `venv`, reads the driver's CUDA version
+from `nvidia-smi`, asks download.pytorch.org which builds exist for that CUDA major
+version and that Python, installs that torch, confirms the GPU is reachable *before*
+going further, then installs Boltz with torch pinned so the install cannot replace
+it. `--cuda cu121` and `--python /path/to/python3` override either choice.
+
+Run it with any foreign conda environment deactivated: a venv built from someone
+else's interpreter keeps depending on it, which is half of what this avoids.
+
+The equivalent by hand, if you would rather:
 
 ```bash
 python3 -m venv /hd/$USER/envs/boltz2        # no --system-site-packages
 source /hd/$USER/envs/boltz2/bin/activate
 pip install torch --index-url https://download.pytorch.org/whl/cu126   # match the driver
-pip install boltz rdkit
+python -c "import torch; print(torch.cuda.get_device_name(0))"         # check before going on
+pip install boltz rdkit pyyaml
 ```
 
 Install torch first, from the CUDA index matching `nvidia-smi`, or pip will pull
 the default wheel — which may be built for a CUDA your driver does not support.
-Do not pass `--system-site-packages`: inheriting the broken torchvision is exactly
-what this avoids. Point the model cache at the same disk if home is small or is not
+Do not install torchvision: Boltz never calls it, and torchmetrics skips its image
+metrics when it is absent, so leaving it out removes the problem instead of working
+around it. Do not pass `--system-site-packages` either: inheriting a broken torch or
+torchvision is exactly what this avoids. Point the model cache at the same disk if home is small or is not
 shared across compute nodes:
 
 ```bash
