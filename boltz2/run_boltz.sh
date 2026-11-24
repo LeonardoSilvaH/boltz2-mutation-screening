@@ -45,6 +45,29 @@ if ! preflight="$(boltz --help 2>&1)"; then
   exit 1
 fi
 
+# The GPU is checked separately. `boltz --help` only proves the imports work; a
+# torch built for a newer CUDA than the driver supports gets all the way into the
+# first prediction before failing, and would do so once per gene.
+gpu_check="$(python3 -c '
+import torch
+if torch.cuda.is_available():
+    print("OK " + torch.cuda.get_device_name(0))
+else:
+    built = torch.version.cuda or "no CUDA"
+    print("FAIL torch %s (built for CUDA %s) cannot use a GPU here" % (torch.__version__, built))
+' 2>&1 | tail -1)"
+case "$gpu_check" in
+  OK*) echo "GPU: ${gpu_check#OK }" ;;
+  *)
+    echo "ERROR: no usable GPU, so every gene would fail the same way:" >&2
+    echo "  $gpu_check" >&2
+    echo "Compare the driver's CUDA version in 'nvidia-smi' with the one torch was" >&2
+    echo "built for. If the driver is older, install a torch built for it." >&2
+    echo "See the Troubleshooting section of the README." >&2
+    exit 1
+    ;;
+esac
+
 MAX_CONSECUTIVE_FAILURES=3
 consecutive_failures=0
 

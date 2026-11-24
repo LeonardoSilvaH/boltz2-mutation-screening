@@ -154,9 +154,15 @@ Then set up the environment and confirm the GPU is visible:
 
 ```bash
 conda create -n boltz2 python=3.11 -y && conda activate boltz2
+pip install torch --index-url https://download.pytorch.org/whl/cu126   # match nvidia-smi
 pip install boltz rdkit pyyaml
 python -c "import torch; print(torch.cuda.get_device_name(0))"
 ```
+
+That last line is the one that matters: it fails if torch was built for a newer
+CUDA than the driver provides, which is easy to hit because the default PyPI
+wheel tracks the newest CUDA. Check the driver's version with `nvidia-smi` and
+pick the matching index.
 
 Boltz downloads its model weights (several GB) into `~/.boltz` on first use. Set
 `BOLTZ_CACHE` if the home directory is small or not shared between nodes.
@@ -200,6 +206,37 @@ pip install --force-reinstall torchvision==0.21.0 --index-url https://download.p
 `run_boltz.sh` runs `boltz --help` before the loop, so a broken install is reported
 once rather than once per gene.
 
+**`RuntimeError: The NVIDIA driver on your system is too old (found version 12030)`**
+— the installed torch was built against a newer CUDA than the driver supports.
+`12030` is the driver's own CUDA version, 12.3. Check both numbers:
+
+```bash
+nvidia-smi | head -3
+python -c "import torch; print(torch.__version__, torch.version.cuda)"
+```
+
+CUDA 12.x builds run on any 12.x driver, but a **CUDA 13 build needs a 13.x
+driver** (r580 or newer), so torch 2.15 from the default PyPI index will not run
+on a 12.3 driver. Install a torch built for the driver's CUDA instead:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cu126
+```
+
+This is the same mismatch behind the torchvision error above, seen from the other
+side: an environment pinned to CUDA 12 (`torchvision 0.20.1+cu121`) had torch
+upgraded past it. Putting torch back on a CUDA 12 build fixes both at once, and
+the stub is then unnecessary — so prefer this to stacking workarounds. Note that
+`cuequivariance` and `trifast` are compiled against torch and will need
+reinstalling after it moves.
+
+If the environment is not writable, this cannot be fixed in place: a read-only
+environment can be worked around for a pure-Python import (the stub above) but
+not for a compiled binary. Build your own environment, as described below.
+
+`run_boltz.sh` checks `torch.cuda.is_available()` before the loop, so this is
+reported once rather than discovered inside each gene's prediction.
+
 **`PermissionError` when trying to fix the environment** — the conda environment
 belongs to another user, so it cannot be repaired in place. Check who owns it and
 whether the group write bit is set:
@@ -236,9 +273,12 @@ Alternatively, build your own environment somewhere you own:
 ```bash
 python3 -m venv /hd/$USER/envs/boltz2        # no --system-site-packages
 source /hd/$USER/envs/boltz2/bin/activate
+pip install torch --index-url https://download.pytorch.org/whl/cu126   # match the driver
 pip install boltz rdkit
 ```
 
+Install torch first, from the CUDA index matching `nvidia-smi`, or pip will pull
+the default wheel — which may be built for a CUDA your driver does not support.
 Do not pass `--system-site-packages`: inheriting the broken torchvision is exactly
 what this avoids. Point the model cache at the same disk if home is small or is not
 shared across compute nodes:
