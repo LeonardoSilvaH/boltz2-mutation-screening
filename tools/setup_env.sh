@@ -226,6 +226,21 @@ echo "torch==$torch_ver" > "$constraints"
 # torchmetrics skips its image metrics when it is absent.
 python -m pip install --constraint "$constraints" boltz rdkit pyyaml
 
+# The fused triangle-multiplication kernels are a separate install that `pip
+# install boltz` does not pull in, but Boltz imports them during the forward
+# pass unless --no_kernels is passed. The cu12 ops package is the compiled half;
+# cuequivariance-torch alone is not enough.
+say "Installing the CUDA kernels Boltz uses"
+# The ops package is published per CUDA *major* version: cu126 -> cu12.
+OPS_TAG="${CUDA_TAG:0:4}"
+kernels_ok=1
+python -m pip install --constraint "$constraints" \
+  cuequivariance-torch "cuequivariance-ops-torch-$OPS_TAG" 2>&1 | tail -5 || kernels_ok=0
+if [ "$kernels_ok" -eq 1 ]; then
+  python -c 'from cuequivariance_torch.primitives.triangle import triangle_multiplicative_update' \
+    2>/dev/null || kernels_ok=0
+fi
+
 say "Verifying"
 now_ver="$(python -c 'import torch; print(torch.__version__)')"
 if [ "$now_ver" != "$torch_ver" ]; then
@@ -236,6 +251,16 @@ python -c 'import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)' \
   || die "torch lost access to the GPU after installing boltz."
 boltz --help > /dev/null || die "'boltz --help' fails in the new environment."
 echo "   torch $now_ver, GPU reachable, boltz imports cleanly"
+if [ "$kernels_ok" -eq 1 ]; then
+  echo "   cuequivariance kernels available"
+else
+  echo
+  echo "   WARNING: the cuequivariance kernels did not install. Boltz still runs,"
+  echo "   but every prediction needs --no_kernels or it will fail in the forward"
+  echo "   pass. run_boltz.sh detects this and adds the flag for you; it is slower"
+  echo "   and uses more memory, so installing them later is worth it:"
+  echo "       pip install --constraint $constraints cuequivariance-torch cuequivariance-ops-torch-$OPS_TAG"
+fi
 
 cat <<MSG
 

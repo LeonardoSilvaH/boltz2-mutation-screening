@@ -68,6 +68,28 @@ case "$gpu_check" in
     ;;
 esac
 
+# Boltz imports the fused triangle-multiplication kernels during the forward
+# pass, not at startup, so a missing cuequivariance shows up only once a
+# prediction is already running -- and then for every gene. `pip install boltz`
+# does not pull those kernels in, so check here and fall back rather than fail.
+want_no_kernels=1
+for arg in ${EXTRA[@]+"${EXTRA[@]}"}; do
+  case "$arg" in
+    --no_kernels|--use_kernels) want_no_kernels=0 ;;
+  esac
+done
+if [ "$want_no_kernels" -eq 1 ]; then
+  if python3 -c 'from cuequivariance_torch.primitives.triangle import triangle_multiplicative_update' 2>/dev/null; then
+    echo "Kernels: cuequivariance available"
+  else
+    echo "NOTE: cuequivariance kernels are not installed, so --no_kernels is being"
+    echo "      added. Predictions will work but run slower and use more memory."
+    echo "      To install them (faster, and safer for the largest proteins):"
+    echo "          pip install cuequivariance-torch cuequivariance-ops-torch-cu12"
+    EXTRA+=(--no_kernels)
+  fi
+fi
+
 MAX_CONSECUTIVE_FAILURES=3
 consecutive_failures=0
 

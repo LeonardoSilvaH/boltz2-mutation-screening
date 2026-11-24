@@ -245,6 +245,29 @@ not for a compiled binary. Build your own environment, as described below.
 `run_boltz.sh` checks `torch.cuda.is_available()` before the loop, so this is
 reported once rather than discovered inside each gene's prediction.
 
+**`ModuleNotFoundError: No module named 'cuequivariance_torch'`** — Boltz uses
+fused CUDA kernels for triangle multiplication, and `pip install boltz` does not
+install them. Because they are imported during the forward pass rather than at
+startup, this surfaces only after a prediction is already running. Install them
+into the environment, matching the CUDA *major* version:
+
+```bash
+pip install cuequivariance-torch cuequivariance-ops-torch-cu12
+```
+
+`cuequivariance-torch` on its own is not enough — the `-ops-` package is the
+compiled half. Use `-cu13` instead on a CUDA 13 driver. If you are in an
+environment built by `setup_env.sh`, pass its constraints file so torch cannot be
+pulled along:
+
+```bash
+pip install --constraint <env>/constraints.txt cuequivariance-torch cuequivariance-ops-torch-cu12
+```
+
+Running without them is supported — `run_boltz.sh` detects their absence and adds
+`--no_kernels` itself — but it is slower and uses more memory, which matters most
+for the two proteins over 2500 residues.
+
 **`PermissionError` when trying to fix the environment** — the conda environment
 belongs to another user, so it cannot be repaired in place. Check who owns it and
 whether the group write bit is set:
